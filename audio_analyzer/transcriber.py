@@ -118,7 +118,14 @@ def transcribe(audio_path: str,
 
     print("  Transcription Whisper...")
     whisper = _load_whisper()
-    kwargs: dict = {"word_timestamps": True}
+    kwargs: dict = {
+        "word_timestamps": True,
+        "vad_filter": True,
+        "vad_parameters": {"min_silence_duration_ms": 500},
+        "condition_on_previous_text": False,
+        "no_speech_threshold": 0.6,
+        "temperature": 0.0,
+    }
     if AUDIO_LANGUAGE:
         kwargs["language"] = AUDIO_LANGUAGE
     raw_segments, info = whisper.transcribe(audio_path, **kwargs)
