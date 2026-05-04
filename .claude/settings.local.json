@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Recurse \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\" | Where-Object { $_.Name -ne \".idea\" -and $_.Name -ne \".venv\" } | Select-Object FullName)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install -r \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\requirements.txt\")",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install anthropic python-dotenv numpy scipy soundfile 2>&1 | Select-Object -Last 20)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install torch torchaudio --index-url https://download.pytorch.org/whl/cpu 2>&1 | Select-Object -Last 15)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install faster-whisper librosa 2>&1 | Select-Object -Last 15)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install resemblyzer 2>&1 | Select-Object -Last 15)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install webrtcvad-wheels 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install resemblyzer --no-deps 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install pyannote.audio 2>&1 | Select-Object -Last 20)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" uninstall anthropic -y 2>&1 | Select-Object -Last 5; & \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install \"ollama>=0.4.0\" 2>&1 | Select-Object -Last 5)",
+      "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" uninstall pyannote.audio pyannote-core pyannote-database pyannote-metrics pyannote-pipeline pyannoteai-sdk -y 2>&1 | Select-Object -Last 10)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\" -Recurse -File | Where-Object { $_.FullName -notmatch '\\\\.venv' -and $_.FullName -notmatch '__pycache__' } | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\', ''\\) } | Sort-Object)",
+      "Bash(.venv\\\\Scripts\\\\pip install *)"
+    ]
+  }
+}
