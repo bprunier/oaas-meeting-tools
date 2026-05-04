@@ -3,8 +3,11 @@ __pycache__/
 *.py[cod]
 *.db
 *.sqlite
+*.mp3
+*.wav
 .env
 .idea/
 *.egg-info/
 dist/
 build/
+test_files
