@@ -19,6 +19,7 @@ def init_db():
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 filename        TEXT NOT NULL,
                 duration        REAL,
+                recording_date  DATE,
                 transcript_full TEXT,
                 summary         TEXT,
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -44,6 +45,10 @@ def init_db():
                 text            TEXT
             );
         """)
+        # Migration base existante sans la colonne recording_date
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(recordings)").fetchall()}
+        if 'recording_date' not in cols:
+            conn.execute("ALTER TABLE recordings ADD COLUMN recording_date DATE")
 
 
 @contextmanager
@@ -92,13 +97,33 @@ def list_fingerprints() -> list[dict]:
 
 # --- Recordings ---
 
-def save_recording(filename: str, duration: float, transcript: str) -> int:
+def save_recording(filename: str, duration: float, transcript: str,
+                   recording_date=None) -> int:
+    date_str = recording_date.isoformat() if recording_date else None
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO recordings (filename, duration, transcript_full) VALUES (?, ?, ?)",
-            (filename, duration, transcript)
+            "INSERT INTO recordings (filename, duration, recording_date, transcript_full)"
+            " VALUES (?, ?, ?, ?)",
+            (filename, duration, date_str, transcript)
         )
         return cur.lastrowid
+
+
+def get_recordings_without_date() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, filename, transcript_full FROM recordings WHERE recording_date IS NULL"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_recording_date(recording_id: int, recording_date) -> None:
+    date_str = recording_date.isoformat() if recording_date else None
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE recordings SET recording_date = ? WHERE id = ?",
+            (date_str, recording_id)
+        )
 
 
 def update_recording_summary(recording_id: int, summary: str):
@@ -162,7 +187,7 @@ def get_recording(recording_id: int) -> dict | None:
 def list_recordings() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT r.id, r.filename, r.duration, r.created_at,
+            """SELECT r.id, r.filename, r.duration, r.recording_date, r.created_at,
                       COUNT(DISTINCT s.id) as speaker_count
                FROM recordings r
                LEFT JOIN speakers s ON s.recording_id = r.id

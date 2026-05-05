@@ -19,6 +19,8 @@ from audio_analyzer import config, database as db
 from audio_analyzer.transcriber import transcribe
 from audio_analyzer.analyzer import analyze_sentiments, generate_summary
 from audio_analyzer.fingerprint import register_fingerprint, identify_speakers
+from audio_analyzer.date_detector import detect_recording_date
+from audio_analyzer.ics_exporter import build_ics
 
 
 # ── Helpers d'affichage ──────────────────────────────────────────────────────
@@ -90,7 +92,8 @@ def cmd_analyze(args):
     summary = generate_summary(full_transcript, sentiments)
 
     # ── Persistance ──────────────────────────────────────────────────────────
-    rec_id = db.save_recording(audio_path, duration, full_transcript)
+    recording_date = detect_recording_date(audio_path, full_transcript)
+    rec_id = db.save_recording(audio_path, duration, full_transcript, recording_date)
     db.update_recording_summary(rec_id, summary)
 
     speaker_db_ids: dict[str, int] = {}
@@ -123,7 +126,8 @@ def cmd_analyze(args):
     print_divider()
     print(f"\n{'RÉSULTAT':^70}")
     print(f"Recording ID : {rec_id}")
-    print(f"Durée        : {fmt_time(duration)}\n")
+    print(f"Durée        : {fmt_time(duration)}")
+    print(f"Date         : {recording_date or 'non détectée'}\n")
 
     print_divider()
     print("LOCUTEURS IDENTIFIÉS\n")
@@ -165,10 +169,11 @@ def cmd_list(args):
         return
     print_header("Enregistrements analysés")
     for r in recordings:
+        date_str = r['recording_date'] or '?'
         print(f"  [{r['id']:>4}] {Path(r['filename']).name:<40} "
               f"{fmt_time(r['duration'] or 0):>8}  "
               f"{r['speaker_count']} locuteur(s)  "
-              f"{r['created_at'][:16]}")
+              f"enreg.: {date_str}")
     print()
 
 
@@ -182,7 +187,8 @@ def cmd_show(args):
 
     rec = data["recording"]
     print_header(f"Enregistrement #{rec['id']} – {Path(rec['filename']).name}")
-    print(f"Durée : {fmt_time(rec['duration'] or 0)}  |  {rec['created_at'][:16]}\n")
+    date_str = rec['recording_date'] or 'non détectée'
+    print(f"Durée : {fmt_time(rec['duration'] or 0)}  |  Date : {date_str}  |  {rec['created_at'][:16]}\n")
 
     print_divider()
     print("LOCUTEURS\n")
@@ -204,6 +210,57 @@ def cmd_show(args):
     print("RÉSUMÉ\n")
     print(rec["summary"] or "(non disponible)")
     print()
+
+
+# ── Commande : backfill-dates ─────────────────────────────────────────────────
+
+def cmd_backfill_dates(args):
+    rows = db.get_recordings_without_date()
+    if not rows:
+        print("Tous les enregistrements ont déjà une date.")
+        return
+
+    updated, skipped = 0, 0
+    for row in rows:
+        d = detect_recording_date(row['filename'], row['transcript_full'] or '')
+        if d:
+            db.update_recording_date(row['id'], d)
+            print(f"  [{row['id']:>4}] {d}  ← {Path(row['filename']).name}")
+            updated += 1
+        else:
+            print(f"  [{row['id']:>4}] non détectée  ← {Path(row['filename']).name}")
+            skipped += 1
+
+    print(f"\n{updated} mise(s) à jour, {skipped} non résolue(s).")
+
+
+# ── Commande : export-ics ────────────────────────────────────────────────────
+
+def cmd_export_ics(args):
+    if args.ids:
+        recordings_data = []
+        for rid in args.ids:
+            data = db.get_recording(rid)
+            if not data:
+                print(f"Enregistrement {rid} introuvable, ignoré.")
+                continue
+            if not (data['recording'].get('recording_date') or data['recording'].get('summary')):
+                print(f"Enregistrement {rid} sans date ni résumé, ignoré.")
+                continue
+            recordings_data.append(data)
+    else:
+        all_recs = db.list_recordings()
+        recordings_data = [db.get_recording(r['id']) for r in all_recs]
+        recordings_data = [d for d in recordings_data if d]
+
+    if not recordings_data:
+        print("Aucun enregistrement à exporter.")
+        return
+
+    ics_content = build_ics(recordings_data)
+    output = args.output or 'recordings.ics'
+    Path(output).write_text(ics_content, encoding='utf-8')
+    print(f"{len(recordings_data)} enregistrement(s) exporté(s) → {output}")
 
 
 # ── Commande : fingerprints ───────────────────────────────────────────────────
@@ -260,6 +317,20 @@ def main():
     # fingerprints
     sub.add_parser("fingerprints", help="Lister les empreintes vocales enregistrées")
 
+    # backfill-dates
+    sub.add_parser("backfill-dates", help="Remplir les dates manquantes des enregistrements existants")
+
+    # export-ics
+    p_ics = sub.add_parser("export-ics", help="Exporter les réunions au format ICS (Google Calendar)")
+    p_ics.add_argument(
+        "ids", nargs="*", type=int,
+        help="IDs des enregistrements à exporter (tous si omis)"
+    )
+    p_ics.add_argument(
+        "--output", "-o", default="recordings.ics",
+        help="Fichier de sortie (défaut: recordings.ics)"
+    )
+
     args = parser.parse_args()
 
     commands = {
@@ -268,6 +339,8 @@ def main():
         "list": cmd_list,
         "show": cmd_show,
         "fingerprints": cmd_fingerprints,
+        "export-ics": cmd_export_ics,
+        "backfill-dates": cmd_backfill_dates,
     }
     commands[args.command](args)
 
