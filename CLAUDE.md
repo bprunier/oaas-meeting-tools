@@ -23,6 +23,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 .venv\Scripts\python main.py list
 .venv\Scripts\python main.py show <id> [--no-transcript]
 .venv\Scripts\python main.py fingerprints
+
+# Remplir les dates manquantes des enregistrements existants
+.venv\Scripts\python main.py backfill-dates
+
+# Exporter les réunions en fichier ICS (Google Calendar)
+.venv\Scripts\python main.py export-ics [<id> ...] [--output fichier.ics]
 ```
 
 Ollama doit tourner localement avant toute analyse : `ollama serve` + le modèle configuré dans `.env` doit être pulled (`ollama pull llama3`).
@@ -48,13 +54,22 @@ Pipeline en 4 étapes orchestré dans `main.py:cmd_analyze` :
    - Fallback automatique si le modèle ne respecte pas le format JSON
 
 4. **Résumé** (`audio_analyzer/analyzer.py`)
-   - Transcript complet + sentiments → Ollama → résumé structuré en 5 sections
+   - Transcript complet + sentiments + liste des participants → Ollama → résumé structuré en 6 sections
+   - Seuls les locuteurs avec ≥ `MIN_SPEAKING_TIME` secondes de parole sont inclus dans les participants
+
+5. **Détection de date** (`audio_analyzer/date_detector.py`)
+   - Tente d'extraire la date depuis le nom de fichier (YYYYMMDD, YYYYMMDDHHMMSS, DD/MM/YYYY…), le transcript (formes littérales FR/EN), puis les métadonnées du fichier
+   - Stockée dans `recordings.recording_date`; `backfill-dates` permet de remplir les enregistrements existants
+
+6. **Export ICS** (`audio_analyzer/ics_exporter.py`)
+   - Génère un fichier `.ics` (RFC 5545) importable dans Google Calendar
+   - Objet : ambiance globale + noms des participants ; Description : résumé Ollama
 
 ### Persistance (SQLite)
 
 Schéma dans `database.py:init_db()` — 4 tables :
 - `fingerprints` : empreintes nommées (embedding stocké en BLOB float32)
-- `recordings` : métadonnées + transcript complet + résumé
+- `recordings` : métadonnées + transcript complet + résumé + `recording_date`
 - `speakers` : locuteurs par enregistrement, avec lien optionnel vers `fingerprints`
 - `segments` : segments de parole individuels avec timestamps
 
@@ -69,6 +84,7 @@ Toute la config passe par `.env` (copier `.env.example`) :
 | `WHISPER_MODEL_SIZE` | `base` | Taille du modèle Whisper (`tiny` → `large-v3`) |
 | `AUDIO_LANGUAGE` | *(vide)* | Langue forcée, sinon auto-détection |
 | `DB_PATH` | `audio_analysis.db` | Chemin SQLite |
+| `MIN_SPEAKING_TIME` | `5` | Temps de parole minimum (secondes) pour figurer dans la synthèse |
 
 ### Points d'attention
 
