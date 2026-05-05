@@ -92,6 +92,7 @@ def cmd_analyze(args):
     participants = {
         label: speaker_ids[label]["name"] if speaker_ids.get(label) else label
         for label in speaker_texts
+        if speaking_times.get(label, 0) >= config.MIN_SPEAKING_TIME
     }
     summary = generate_summary(full_transcript, sentiments, participants)
 
