@@ -60,15 +60,23 @@ Réponds UNIQUEMENT en JSON valide avec ce format exact, sans texte autour :
         }
 
 
-def generate_summary(transcript: str, speakers_info: dict[str, dict]) -> str:
+def generate_summary(transcript: str, speakers_info: dict[str, dict],
+                     participants: dict[str, str] | None = None) -> str:
     """
-    transcript : texte complet de la réunion
+    transcript    : texte complet de la réunion
     speakers_info : {label: {sentiment, score, ...}}
+    participants  : {label: nom_affiché} — nom identifié ou label brut
     """
     sentiments_str = "\n".join(
-        f"- {label} ({info.get('sentiment', '?')}) : {info.get('explication', '')}"
+        f"- {(participants or {}).get(label, label)} ({info.get('sentiment', '?')}) : {info.get('explication', '')}"
         for label, info in speakers_info.items()
     )
+
+    if participants:
+        names = ", ".join(participants.values())
+        participants_line = f"Participants ({len(participants)}) : {names}\n\n"
+    else:
+        participants_line = ""
 
     prompt = f"""Tu es un assistant expert en synthèse de réunions.
 
@@ -76,15 +84,16 @@ Voici la transcription complète d'une réunion :
 
 {transcript}
 
-Sentiments identifiés par locuteur :
+{participants_line}Sentiments identifiés par locuteur :
 {sentiments_str}
 
 Génère un résumé structuré en français comprenant :
 1. **Contexte** – Sujet principal de la réunion (2-3 phrases)
-2. **Points clés abordés** – Liste des sujets importants
-3. **Décisions prises** – Ce qui a été décidé (si applicable)
-4. **Actions à suivre** – Tâches identifiées avec responsable si mentionné
-5. **Ambiance générale** – Dynamique du groupe et tensions éventuelles
+2. **Participants** – Nombre et noms des participants (utilise les noms fournis si disponibles)
+3. **Points clés abordés** – Liste des sujets importants
+4. **Décisions prises** – Ce qui a été décidé (si applicable)
+5. **Actions à suivre** – Tâches identifiées avec responsable si mentionné
+6. **Ambiance générale** – Dynamique du groupe et tensions éventuelles
 
 Sois précis et factuel."""
 

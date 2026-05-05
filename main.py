@@ -89,7 +89,11 @@ def cmd_analyze(args):
 
     # 4. Résumé
     print("\n[Étape 4/4] Génération du résumé...")
-    summary = generate_summary(full_transcript, sentiments)
+    participants = {
+        label: speaker_ids[label]["name"] if speaker_ids.get(label) else label
+        for label in speaker_texts
+    }
+    summary = generate_summary(full_transcript, sentiments, participants)
 
     # ── Persistance ──────────────────────────────────────────────────────────
     recording_date = detect_recording_date(audio_path, full_transcript)
