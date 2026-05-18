@@ -11,3 +11,7 @@ __pycache__/
 dist/
 build/
 test_files
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
+.claude/settings.local.json

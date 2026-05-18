@@ -7,25 +7,43 @@ import numpy as np
 import torch
 import librosa
 from faster_whisper import WhisperModel
-from resemblyzer import VoiceEncoder, preprocess_wav
+from resemblyzer import preprocess_wav
 from sklearn.cluster import AgglomerativeClustering
 from audio_analyzer.config import WHISPER_MODEL_SIZE, AUDIO_LANGUAGE
+from audio_analyzer.voice_encoder import get_encoder
 
 SAMPLE_RATE = 16000
-_encoder: VoiceEncoder | None = None
 
 
-def _get_encoder() -> VoiceEncoder:
-    global _encoder
-    if _encoder is None:
-        _encoder = VoiceEncoder()
-    return _encoder
+def _load_whisper(force_cpu: bool = False) -> tuple[WhisperModel, str]:
+    if force_cpu:
+        return WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8"), "CPU"
+    try:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        compute = "float16" if device == "cuda" else "int8"
+        label = "GPU" if device == "cuda" else "CPU"
+        return WhisperModel(WHISPER_MODEL_SIZE, device=device, compute_type=compute), label
+    except RuntimeError as e:
+        if "libcublas" in str(e) or "CUDA" in str(e):
+            print("  CUDA error at model load, falling back to CPU...")
+            return WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8"), "CPU"
+        raise
 
 
-def _load_whisper() -> WhisperModel:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute = "float16" if device == "cuda" else "int8"
-    return WhisperModel(WHISPER_MODEL_SIZE, device=device, compute_type=compute)
+def _collect_segments(raw_segments, speaker_map: dict) -> list[dict]:
+    segments = []
+    for seg in raw_segments:
+        text = seg.text.strip()
+        if not text:
+            continue
+        speaker = _dominant_speaker(seg.start, seg.end, speaker_map)
+        segments.append({
+            "start": round(seg.start, 2),
+            "end": round(seg.end, 2),
+            "speaker": speaker,
+            "text": text,
+        })
+    return segments
 
 
 def _vad_segments(waveform: np.ndarray, sr: int,
@@ -48,7 +66,7 @@ def _diarize(waveform: np.ndarray, sr: int,
     Assigne un label locuteur à chaque segment VAD via resemblyzer + clustering.
     Retourne {(start, end): "SPEAKER_XX"}
     """
-    encoder = _get_encoder()
+    encoder = get_encoder()
     embeddings: list[np.ndarray] = []
     valid_segs: list[tuple[float, float]] = []
 
@@ -103,21 +121,23 @@ def transcribe(audio_path: str,
 
     num_speakers : nombre de locuteurs si connu, sinon détection automatique.
     """
+    device_label = "GPU" if torch.cuda.is_available() else "CPU"
+
     print("  Chargement de l'audio...")
     waveform, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
     duration = len(waveform) / SAMPLE_RATE
 
-    print("  Détection des segments de parole (VAD)...")
+    print("  Détection des segments de parole (VAD) [CPU]...")
     vad_segs = _vad_segments(waveform, SAMPLE_RATE)
     print(f"  {len(vad_segs)} segments détectés.")
 
-    print("  Identification des locuteurs (clustering)...")
+    print(f"  Identification des locuteurs (clustering) [{device_label}]...")
     speaker_map = _diarize(waveform, SAMPLE_RATE, vad_segs, num_speakers)
     n_speakers = len(set(speaker_map.values()))
     print(f"  {n_speakers} locuteur(s) identifié(s).")
 
-    print("  Transcription Whisper...")
-    whisper = _load_whisper()
+    whisper, whisper_device = _load_whisper()
+    print(f"  Transcription Whisper [{whisper_device}]...")
     kwargs: dict = {
         "word_timestamps": True,
         "vad_filter": True,
@@ -128,19 +148,16 @@ def transcribe(audio_path: str,
     }
     if AUDIO_LANGUAGE:
         kwargs["language"] = AUDIO_LANGUAGE
-    raw_segments, info = whisper.transcribe(audio_path, **kwargs)
 
-    segments = []
-    for seg in raw_segments:
-        text = seg.text.strip()
-        if not text:
-            continue
-        speaker = _dominant_speaker(seg.start, seg.end, speaker_map)
-        segments.append({
-            "start": round(seg.start, 2),
-            "end": round(seg.end, 2),
-            "speaker": speaker,
-            "text": text,
-        })
+    raw_segments, info = whisper.transcribe(audio_path, **kwargs)
+    try:
+        segments = _collect_segments(raw_segments, speaker_map)
+    except RuntimeError as e:
+        if "libcublas" not in str(e) and "CUDA" not in str(e):
+            raise
+        print("  CUDA error during transcription, retrying on CPU...")
+        whisper, _ = _load_whisper(force_cpu=True)
+        raw_segments, info = whisper.transcribe(audio_path, **kwargs)
+        segments = _collect_segments(raw_segments, speaker_map)
 
     return segments, round(info.duration, 2)

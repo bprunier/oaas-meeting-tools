@@ -13,7 +13,21 @@
       "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" uninstall anthropic -y 2>&1 | Select-Object -Last 5; & \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" install \"ollama>=0.4.0\" 2>&1 | Select-Object -Last 5)",
       "PowerShell(& \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\.venv\\\\Scripts\\\\pip.exe\" uninstall pyannote.audio pyannote-core pyannote-database pyannote-metrics pyannote-pipeline pyannoteai-sdk -y 2>&1 | Select-Object -Last 10)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\" -Recurse -File | Where-Object { $_.FullName -notmatch '\\\\.venv' -and $_.FullName -notmatch '__pycache__' } | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\bprun\\\\PycharmProjects\\\\PythonProject\\\\', ''\\) } | Sort-Object)",
-      "Bash(.venv\\\\Scripts\\\\pip install *)"
+      "Bash(.venv\\\\Scripts\\\\pip install *)",
+      "Bash(nvidia-smi)",
+      "Bash(nvcc --version)",
+      "Read(//usr/lib64/**)",
+      "Read(//usr/local/cuda/**)",
+      "Bash(ldconfig -p)",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/pip index *)",
+      "Bash(python3 -c \"import ctranslate2; print\\(ctranslate2.__file__\\)\")",
+      "Bash(ldd /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib64/python3.14/site-packages/ctranslate2/_ext/*.so)",
+      "Bash(ldd /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/ctranslate2.libs/libctranslate2-5a650b64.so.4.7.1)",
+      "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/ctranslate2.libs/libctranslate2-5a650b64.so.4.7.1)",
+      "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/ctranslate2/_ext.cpython-314-x86_64-linux-gnu.so)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/nvidia/cublas/lib/libcublas.so.12)"
     ]
   }
 }

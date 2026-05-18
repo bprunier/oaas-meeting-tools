@@ -10,10 +10,21 @@ Usage:
 """
 from __future__ import annotations
 import argparse
+import ctypes
 import os
+import site
 import sys
 from pathlib import Path
 from collections import defaultdict
+
+# ctranslate2 4.x was compiled for CUDA 12 and does dlopen("libcublas.so.12").
+# On CUDA 13 systems, preload the cu12 lib by full path so the soname lands in
+# the process library cache before faster_whisper/ctranslate2 are imported.
+for _sp in site.getsitepackages():
+    _lib = os.path.join(_sp, "nvidia", "cublas", "lib", "libcublas.so.12")
+    if os.path.exists(_lib):
+        ctypes.CDLL(_lib)
+        break
 
 from audio_analyzer import config, database as db
 from audio_analyzer.transcriber import transcribe
@@ -51,11 +62,13 @@ def cmd_analyze(args):
         sys.exit(1)
 
     print_header(f"Analyse : {Path(audio_path).name}")
+    print("Démarrage de l'analyse audio...")
 
     # 1. Transcription + diarisation
     print("\n[Étape 1/4] Transcription et diarisation...")
     segments, duration = transcribe(audio_path, num_speakers=args.speakers)
     print(f"  Durée : {fmt_time(duration)} | Segments : {len(segments)}")
+    print("Transcription et diarisation terminées.")
 
     # Grouper segments par locuteur
     speaker_texts: dict[str, list[str]] = defaultdict(list)
@@ -79,27 +92,32 @@ def cmd_analyze(args):
     # 2. Identification via empreintes
     print("\n[Étape 2/4] Identification des locuteurs...")
     speaker_ids = identify_speakers(audio_path, speaker_segs, threshold=args.threshold)
+    print("Identification des locuteurs terminée.")
 
     # 3. Analyse de sentiment
-    print("\n[Étape 3/4] Analyse des sentiments...")
+    print(f"\n[Étape 3/4] Analyse des sentiments [Ollama: {config.OLLAMA_MODEL}]...")
     speaker_text_joined = {
         label: " ".join(texts) for label, texts in speaker_texts.items()
     }
     sentiments = analyze_sentiments(speaker_text_joined)
+    print("Analyse des sentiments terminée.")
 
     # 4. Résumé
-    print("\n[Étape 4/4] Génération du résumé...")
+    print(f"\n[Étape 4/4] Génération du résumé [Ollama: {config.OLLAMA_MODEL}]...")
     participants = {
         label: speaker_ids[label]["name"] if speaker_ids.get(label) else label
         for label in speaker_texts
         if speaking_times.get(label, 0) >= config.MIN_SPEAKING_TIME
     }
     summary = generate_summary(full_transcript, sentiments, participants)
+    print("Génération du résumé terminée.")
 
     # ── Persistance ──────────────────────────────────────────────────────────
+    print("\nSauvegarde des résultats...")
     recording_date = detect_recording_date(audio_path, full_transcript)
     rec_id = db.save_recording(audio_path, duration, full_transcript, recording_date)
     db.update_recording_summary(rec_id, summary)
+    print("Résultats sauvegardés.")
 
     speaker_db_ids: dict[str, int] = {}
     for label in speaker_texts:
@@ -126,6 +144,7 @@ def cmd_analyze(args):
         }
         for s in segments
     ])
+    print("Segments sauvegardés.")
 
     # ── Affichage résultats ──────────────────────────────────────────────────
     print_divider()
@@ -153,6 +172,10 @@ def cmd_analyze(args):
     print(summary)
     print_divider()
     print(f"\nSauvegardé en base → ID {rec_id}  (python main.py show {rec_id})\n")
+    
+    # Quitter le processus à la fin
+    print("Analyse terminée. Fermeture du processus.")
+    sys.exit(0)
 
 
 # ── Commande : add-fingerprint ────────────────────────────────────────────────

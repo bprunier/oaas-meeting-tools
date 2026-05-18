@@ -6,24 +6,16 @@ from __future__ import annotations
 import numpy as np
 import soundfile as sf
 import librosa
-from resemblyzer import VoiceEncoder, preprocess_wav
+from resemblyzer import preprocess_wav
 from pathlib import Path
 from audio_analyzer import database as db
-
-_encoder: VoiceEncoder | None = None
-
-
-def _get_encoder() -> VoiceEncoder:
-    global _encoder
-    if _encoder is None:
-        _encoder = VoiceEncoder()
-    return _encoder
+from audio_analyzer.voice_encoder import get_encoder
 
 
 def extract_embedding(audio_path: str) -> np.ndarray:
     """Extrait l'empreinte vocale (256-dim) d'un fichier audio."""
     wav = preprocess_wav(Path(audio_path))
-    encoder = _get_encoder()
+    encoder = get_encoder()
     return encoder.embed_utterance(wav)
 
 
@@ -44,7 +36,7 @@ def extract_embedding_from_segments(audio_path: str,
         raise ValueError("Aucun segment audio valide fourni.")
 
     combined = np.concatenate(clips)
-    encoder = _get_encoder()
+    encoder = get_encoder()
     wav_processed = preprocess_wav(combined, source_sr=16000)
     return encoder.embed_utterance(wav_processed)
 
