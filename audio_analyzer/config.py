@@ -12,6 +12,7 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
 MIN_SPEAKING_TIME = float(os.getenv("MIN_SPEAKING_TIME", "5"))
+VAD_TOP_DB = int(os.getenv("VAD_TOP_DB", "35"))
 
 
 def validate():

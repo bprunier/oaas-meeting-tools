@@ -60,12 +60,21 @@ Réponds UNIQUEMENT en JSON valide avec ce format exact, sans texte autour :
         }
 
 
+_PROFILE_LABELS = {
+    "busy": "Occupé(e) / Indisponible",
+    "sleeping": "Dort chez quelqu'un",
+    "quality": "Problème qualité audio",
+}
+
+
 def generate_summary(transcript: str, speakers_info: dict[str, dict],
-                     participants: dict[str, str] | None = None) -> str:
+                     participants: dict[str, str] | None = None,
+                     detections: list[dict] | None = None) -> str:
     """
     transcript    : texte complet de la réunion
     speakers_info : {label: {sentiment, score, ...}}
     participants  : {label: nom_affiché} — nom identifié ou label brut
+    detections    : liste de dicts {profile, confirmed, explanation, key_passage, identified_name, speaker_label}
     """
     sentiments_str = "\n".join(
         f"- {(participants or {}).get(label, label)} ({info.get('sentiment', '?')}) : {info.get('explication', '')}"
@@ -78,6 +87,24 @@ def generate_summary(transcript: str, speakers_info: dict[str, dict],
     else:
         participants_line = ""
 
+    detections_block = ""
+    if detections:
+        confirmed = [d for d in detections if d.get("confirmed")]
+        if confirmed:
+            lines = []
+            for d in confirmed:
+                who = d.get("identified_name") or d.get("speaker_label") or "enregistrement"
+                label = _PROFILE_LABELS.get(d["profile"], d["profile"])
+                line = f"- {label} ({who})"
+                if d.get("key_passage"):
+                    line += f' : « {d["key_passage"]} »'
+                lines.append(line)
+            detections_block = (
+                "\nSignaux détectés automatiquement :\n"
+                + "\n".join(lines)
+                + "\n"
+            )
+
     prompt = f"""Tu es un assistant expert en synthèse de réunions.
 
 Voici la transcription complète d'une réunion :
@@ -86,7 +113,7 @@ Voici la transcription complète d'une réunion :
 
 {participants_line}Sentiments identifiés par locuteur :
 {sentiments_str}
-
+{detections_block}
 Génère un résumé structuré en français comprenant :
 1. **Contexte** – Sujet principal de la réunion (2-3 phrases)
 2. **Participants** – Nombre et noms des participants (utilise les noms fournis si disponibles)
@@ -94,6 +121,7 @@ Génère un résumé structuré en français comprenant :
 4. **Décisions prises** – Ce qui a été décidé (si applicable)
 5. **Actions à suivre** – Tâches identifiées avec responsable si mentionné
 6. **Ambiance générale** – Dynamique du groupe et tensions éventuelles
+{("7. **Signaux détectés** – Reprends les signaux ci-dessus dans le résumé (disponibilité, hébergement, qualité audio)" if detections_block else "")}
 
 Sois précis et factuel."""
 

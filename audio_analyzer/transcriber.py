@@ -114,7 +114,8 @@ def _dominant_speaker(seg_start: float, seg_end: float,
 
 
 def transcribe(audio_path: str,
-               num_speakers: int | None = None) -> tuple[list[dict], float]:
+               num_speakers: int | None = None,
+               vad_top_db: int = 35) -> tuple[list[dict], float]:
     """
     Retourne (segments, durée_secondes).
     Chaque segment : {start, end, speaker, text}
@@ -127,8 +128,8 @@ def transcribe(audio_path: str,
     waveform, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
     duration = len(waveform) / SAMPLE_RATE
 
-    print("  Détection des segments de parole (VAD) [CPU]...")
-    vad_segs = _vad_segments(waveform, SAMPLE_RATE)
+    print(f"  Détection des segments de parole (VAD) [CPU, top_db={vad_top_db}]...")
+    vad_segs = _vad_segments(waveform, SAMPLE_RATE, top_db=vad_top_db)
     print(f"  {len(vad_segs)} segments détectés.")
 
     print(f"  Identification des locuteurs (clustering) [{device_label}]...")
