@@ -27,7 +27,8 @@
       "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/ctranslate2.libs/libctranslate2-5a650b64.so.4.7.1)",
       "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/ctranslate2/_ext.cpython-314-x86_64-linux-gnu.so)",
       "Bash(.venv/bin/pip install *)",
-      "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/nvidia/cublas/lib/libcublas.so.12)"
+      "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/nvidia/cublas/lib/libcublas.so.12)",
+      "Bash(python *)"
     ]
   }
 }

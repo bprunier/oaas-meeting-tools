@@ -47,27 +47,53 @@ chmod +x install.sh
 ### Activate Virtual Environment
 
 ```bash
+# Linux / macOS
 source .venv/bin/activate
+
+# Windows
+.venv\Scripts\Activate.ps1
 ```
 
-### Basic Usage
+### Commands
 
 ```bash
-# Analyze an audio file
-python main.py analyze <fichier_audio> [--speakers N] [--threshold 0.75]
+# Analyze a single audio file (speakers and threshold are optional)
+python main.py analyze <fichier.mp3> [--speakers N] [--threshold 0.75]
 
-# Add a voice fingerprint for speaker identification
+# Scan an entire directory and analyze all audio files found
+# Supported formats: mp3, wav, m4a, ogg, flac, opus, aac
+# Already-analyzed files are automatically skipped
+python main.py scan-dir <répertoire> [--speakers N] [--threshold 0.75]
+python main.py scan-dir <répertoire> --recursive   # include subdirectories
+
+# Add a voice fingerprint for a known speaker
 python main.py add-fingerprint "Nom" <fichier.wav>
 
 # List all analyzed recordings
 python main.py list
 
-# Show details of a specific recording
-python main.py show <id>
+# Show details of a specific recording (use --no-transcript to hide transcript)
+python main.py show <id> [--no-transcript]
 
-# Export recordings to ICS format
+# List registered voice fingerprints
+python main.py fingerprints
+
+# Backfill missing dates on existing recordings
+python main.py backfill-dates
+
+# Export all recordings to CSV (id, date, recognized speakers, transcription, summary)
+python main.py export-csv
+python main.py export-csv --output rapport.csv
+
+# Delete ALL recordings from the database (voice fingerprints are kept)
+python main.py clear-recordings
+python main.py clear-recordings --yes   # skip confirmation prompt
+
+# Export recordings to ICS format for Google Calendar
 python main.py export-ics [<id> ...] [--output fichier.ics]
 ```
+
+> Ollama must be running before any analysis: `ollama serve`
 
 ### Configuration
 

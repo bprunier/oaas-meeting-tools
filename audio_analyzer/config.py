@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 DB_PATH = os.getenv("DB_PATH", "audio_analysis.db")
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")

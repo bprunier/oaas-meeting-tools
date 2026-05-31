@@ -95,6 +95,12 @@ def list_fingerprints() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def delete_fingerprint(fp_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM fingerprints WHERE id = ?", (fp_id,))
+        return cur.rowcount > 0
+
+
 # --- Recordings ---
 
 def save_recording(filename: str, duration: float, transcript: str,
@@ -182,6 +188,44 @@ def get_recording(recording_id: int) -> dict | None:
         "speakers": [dict(s) for s in speakers],
         "segments": [dict(s) for s in segments],
     }
+
+
+def get_analyzed_filenames() -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT filename FROM recordings").fetchall()
+    return {row["filename"] for row in rows}
+
+
+def export_recordings_csv() -> list[dict]:
+    with get_conn() as conn:
+        recordings = conn.execute(
+            "SELECT id, recording_date, duration, transcript_full, summary FROM recordings ORDER BY recording_date, id"
+        ).fetchall()
+        result = []
+        for rec in recordings:
+            speakers = conn.execute(
+                """SELECT identified_name FROM speakers
+                   WHERE recording_id = ? AND fingerprint_id IS NOT NULL
+                   ORDER BY speaking_time DESC""",
+                (rec["id"],)
+            ).fetchall()
+            result.append({
+                "id": rec["id"],
+                "date": rec["recording_date"] or "",
+                "duration": rec["duration"] or "",
+                "speakers": ", ".join(s["identified_name"] for s in speakers),
+                "transcription": rec["transcript_full"] or "",
+                "résumé": rec["summary"] or "",
+            })
+    return result
+
+
+def clear_recordings() -> int:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM segments")
+        conn.execute("DELETE FROM speakers")
+        cur = conn.execute("DELETE FROM recordings")
+        return cur.rowcount
 
 
 def list_recordings() -> list[dict]:
