@@ -125,6 +125,7 @@ python main.py clear-recordings [--yes]
 | `OLLAMA_HOST` | `http://localhost:11434` | URL Ollama |
 | `OLLAMA_MODEL` | `llama3` | Modèle LLM |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Modèle embeddings RAG (via Ollama) |
+| `RAG_TOP_K` | `20` | Nombre de segments récupérés par défaut pour `ask` |
 
 `DB_PATH` et `CHROMA_PATH` sont gérés automatiquement par le système de projets — ne pas les définir dans `.env`.
 

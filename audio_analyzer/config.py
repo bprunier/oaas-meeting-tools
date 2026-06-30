@@ -17,6 +17,8 @@ VAD_TOP_DB = int(os.getenv("VAD_TOP_DB", "35"))
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 CHROMA_PATH = os.getenv("CHROMA_PATH", "chroma_db")
 
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "20"))
+
 
 def validate():
     pass  # Tout est local, aucune clé requise

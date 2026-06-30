@@ -1133,8 +1133,8 @@ def main():
     p_ask = sub.add_parser("ask", help="Poser une question sur les réunions (RAG)")
     p_ask.add_argument("question", help="Question en langage naturel")
     p_ask.add_argument(
-        "--top-k", type=int, default=8, metavar="N",
-        help="Nombre de segments à récupérer (défaut: 8)"
+        "--top-k", type=int, default=config.RAG_TOP_K, metavar="N",
+        help=f"Nombre de segments à récupérer (défaut: {config.RAG_TOP_K}, variable RAG_TOP_K)"
     )
     p_ask.add_argument(
         "--recording", "-r", type=int, default=None, metavar="ID",
