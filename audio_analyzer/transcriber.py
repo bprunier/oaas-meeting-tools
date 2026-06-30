@@ -31,18 +31,63 @@ def _load_whisper(force_cpu: bool = False) -> tuple[WhisperModel, str]:
 
 
 def _collect_segments(raw_segments, speaker_map: dict) -> list[dict]:
-    segments = []
+    """
+    Attribution au niveau du mot (word_timestamps=True) pour capter les locuteurs
+    qui s'expriment brièvement dans un segment Whisper dominé par quelqu'un d'autre.
+    Regroupe les mots consécutifs du même locuteur en un seul segment.
+    """
+    pending_speaker: str | None = None
+    pending_words: list[str] = []
+    pending_start: float = 0.0
+    pending_end: float = 0.0
+    segments: list[dict] = []
+
+    def _flush():
+        if pending_words:
+            text = " ".join(pending_words).strip()
+            if text:
+                segments.append({
+                    "start": round(pending_start, 2),
+                    "end": round(pending_end, 2),
+                    "speaker": pending_speaker,
+                    "text": text,
+                })
+
     for seg in raw_segments:
-        text = seg.text.strip()
-        if not text:
+        words = getattr(seg, "words", None)
+        if not words:
+            # Fallback segment-level si pas de timestamps de mots
+            text = seg.text.strip()
+            if not text:
+                continue
+            speaker = _dominant_speaker(seg.start, seg.end, speaker_map)
+            if speaker != pending_speaker:
+                _flush()
+                pending_speaker = speaker
+                pending_words = [text]
+                pending_start = seg.start
+                pending_end = seg.end
+            else:
+                pending_words.append(text)
+                pending_end = seg.end
             continue
-        speaker = _dominant_speaker(seg.start, seg.end, speaker_map)
-        segments.append({
-            "start": round(seg.start, 2),
-            "end": round(seg.end, 2),
-            "speaker": speaker,
-            "text": text,
-        })
+
+        for word in words:
+            w = word.word.strip()
+            if not w:
+                continue
+            speaker = _dominant_speaker(word.start, word.end, speaker_map)
+            if speaker != pending_speaker:
+                _flush()
+                pending_speaker = speaker
+                pending_words = [w]
+                pending_start = word.start
+                pending_end = word.end
+            else:
+                pending_words.append(w)
+                pending_end = word.end
+
+    _flush()
     return segments
 
 

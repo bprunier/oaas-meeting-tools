@@ -748,13 +748,19 @@ def cmd_index(args):
     """Indexe tous les enregistrements existants dans ChromaDB pour la recherche sémantique."""
     from audio_analyzer.embedder import index_segments, collection_count
 
+    active_project = get_current_project() or getattr(args, "project", None)
+    if not active_project:
+        print("Aucun projet actif. Activez-en un d'abord :")
+        print("  python main.py project use <nom>")
+        return
+
     recordings = db.list_recordings()
     if not recordings:
         print("Aucun enregistrement à indexer.")
         return
 
     already = collection_count()
-    print_header(f"Indexation RAG — {len(recordings)} enregistrement(s) ({already} segments déjà indexés)")
+    print_header(f"Indexation RAG [{active_project}] — {len(recordings)} enregistrement(s) ({already} segments déjà indexés)")
 
     total = 0
     errors = []
@@ -792,16 +798,23 @@ def cmd_ask(args):
     from audio_analyzer.embedder import search_semantic, collection_count
     import ollama as ollama_client
 
+    active_project = get_current_project() or getattr(args, "project", None)
+    if not active_project:
+        print("Aucun projet actif. Activez-en un d'abord :")
+        print("  python main.py project use <nom>")
+        return
+
     question = args.question
     n = args.top_k
     recording_id = getattr(args, "recording", None)
 
     total_indexed = collection_count()
     if total_indexed == 0:
-        print("Aucun segment indexé. Lancez d'abord : python main.py index")
+        print(f"Aucun segment indexé dans le projet '{active_project}'.")
+        print("Lancez d'abord : python main.py index")
         return
 
-    print_header(f"RAG : {question}")
+    print_header(f"RAG [{active_project}] : {question}")
     print(f"  {total_indexed} segments indexés | top-{n} recherchés\n")
 
     segments = search_semantic(question, n_results=n, recording_id=recording_id)
@@ -809,17 +822,34 @@ def cmd_ask(args):
         print("Aucun segment pertinent trouvé.")
         return
 
-    print_divider()
-    print("SEGMENTS RETROUVÉS\n")
-    context_lines = []
+    # Grouper par enregistrement (ordre d'apparition du meilleur score)
+    from collections import OrderedDict
+    recordings_map: OrderedDict[int, dict] = OrderedDict()
     for s in segments:
-        name = s["identified_name"] or s["speaker_label"]
-        time = fmt_time(s["start_time"])
-        date = s["recording_date"] or "?"
-        score_bar = "█" * int(s["score"] * 10)
-        print(f"  [{s['score']:.2f} {score_bar:<10}] [{date} {time}] {name}")
-        print(f"    {s['text']}\n")
-        context_lines.append(f"[{date} / {time}] {name}: {s['text']}")
+        rid = s["recording_id"]
+        if rid not in recordings_map:
+            recordings_map[rid] = {
+                "id": rid,
+                "filename": s["filename"],
+                "date": s["recording_date"] or "?",
+                "segments": [],
+            }
+        recordings_map[rid]["segments"].append(s)
+
+    print_divider()
+    print(f"ENREGISTREMENTS RETROUVÉS ({len(recordings_map)})\n")
+    context_lines = []
+    for rec in recordings_map.values():
+        fname = Path(rec["filename"]).name
+        print(f"  #{rec['id']} — {fname}  [{rec['date']}]")
+        for s in rec["segments"]:
+            name = s["identified_name"] or s["speaker_label"]
+            time = fmt_time(s["start_time"])
+            score_bar = "█" * int(s["score"] * 10)
+            print(f"    [{s['score']:.2f} {score_bar:<10}] {time}  {name}")
+            print(f"      {s['text']}")
+            context_lines.append(f"[#{rec['id']} {rec['date']} / {time}] {name}: {s['text']}")
+        print()
 
     context = "\n".join(context_lines)
 
