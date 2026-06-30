@@ -34,6 +34,11 @@ from audio_analyzer.fingerprint import register_fingerprint, identify_speakers, 
 from audio_analyzer.date_detector import detect_recording_date
 from audio_analyzer.ics_exporter import build_ics
 from audio_analyzer.searcher import PROFILES, search as do_search, confirm_profile
+from audio_analyzer.project import (
+    activate_project, create_project, list_projects,
+    get_current_project, set_current_project,
+    exports_dir, voices_dir, project_path,
+)
 
 
 # ── Helpers d'affichage ──────────────────────────────────────────────────────
@@ -591,7 +596,9 @@ def cmd_export_ics(args):
         return
 
     ics_content = build_ics(recordings_data)
-    output = args.output or 'recordings.ics'
+    proj = args.project or get_current_project()
+    default_out = str(exports_dir(proj) / "recordings.ics") if proj else "recordings.ics"
+    output = args.output or default_out
     Path(output).write_text(ics_content, encoding='utf-8')
     print(f"{len(recordings_data)} enregistrement(s) exporté(s) → {output}")
 
@@ -632,7 +639,9 @@ def cmd_export_csv(args):
     if not rows:
         print("Aucun enregistrement à exporter.")
         return
-    output = args.output or "recordings.csv"
+    proj = args.project or get_current_project()
+    default_out = str(exports_dir(proj) / "recordings.csv") if proj else "recordings.csv"
+    output = args.output or default_out
     with open(output, "w", encoding="utf-8") as f:
         f.write(_CSV_SEP.join(_CSV_FIELDS) + "\n")
         for row in rows:
@@ -837,6 +846,65 @@ def cmd_ask(args):
     print()
 
 
+# ── Commande : project ───────────────────────────────────────────────────────
+
+def cmd_project(args):
+    sub = args.project_action
+
+    if sub == "create":
+        name = args.name
+        try:
+            p = create_project(name)
+            print_header(f"Projet créé : {name}")
+            print(f"  Répertoire : {p.resolve()}")
+            print(f"  ├── audio_analysis.db  (base SQLite)")
+            print(f"  ├── chroma_db/          (index vectoriel RAG)")
+            print(f"  ├── voices/             (fichiers audio des empreintes)")
+            print(f"  ├── exports/            (CSV, ICS)")
+            print(f"  └── .env               (config spécifique au projet)")
+            print(f"\nActivez-le avec : python main.py project use {name}")
+        except Exception as e:
+            print(f"Erreur : {e}")
+            sys.exit(1)
+
+    elif sub == "list":
+        projects = list_projects()
+        current = get_current_project()
+        if not projects:
+            print("Aucun projet. Créez-en un : python main.py project create <nom>")
+            return
+        print_header("Projets disponibles")
+        for name in projects:
+            p = project_path(name)
+            marker = "●" if name == current else " "
+            db_size = ""
+            db_file = p / "audio_analysis.db"
+            if db_file.exists():
+                kb = db_file.stat().st_size // 1024
+                db_size = f"  [{kb} KB]"
+            print(f"  {marker} {name:<30}{db_size}")
+        if current:
+            print(f"\nProjet actif : {current}")
+        print()
+
+    elif sub == "use":
+        name = args.name
+        p = project_path(name)
+        if not p.exists():
+            print(f"Projet '{name}' introuvable. Créez-le d'abord : python main.py project create {name}")
+            sys.exit(1)
+        set_current_project(name)
+        print(f"Projet actif → {name}")
+
+    elif sub == "unset":
+        current = get_current_project()
+        set_current_project(None)
+        if current:
+            print(f"Projet désactivé (était : {current})")
+        else:
+            print("Aucun projet actif.")
+
+
 # ── Commande : remove-fingerprint ────────────────────────────────────────────
 
 def cmd_remove_fingerprint(args):
@@ -852,10 +920,12 @@ def cmd_remove_fingerprint(args):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    db.init_db()
-
     parser = argparse.ArgumentParser(
         description="Audio Analyzer – Transcription, diarisation, sentiment, résumé"
+    )
+    parser.add_argument(
+        "--project", "-P", default=None, metavar="NOM",
+        help="Projet à utiliser (surcharge .current_project)"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1016,6 +1086,16 @@ def main():
         help="Fichier de sortie (défaut: recordings.ics)"
     )
 
+    # project
+    p_proj = sub.add_parser("project", help="Gérer les projets (create / list / use / unset)")
+    proj_sub = p_proj.add_subparsers(dest="project_action", required=True)
+    p_proj_create = proj_sub.add_parser("create", help="Créer un nouveau projet")
+    p_proj_create.add_argument("name", help="Nom du projet")
+    p_proj_list = proj_sub.add_parser("list", help="Lister les projets disponibles")  # noqa: F841
+    p_proj_use = proj_sub.add_parser("use", help="Activer un projet")
+    p_proj_use.add_argument("name", help="Nom du projet")
+    proj_sub.add_parser("unset", help="Désactiver le projet courant")
+
     # index
     sub.add_parser("index", help="Indexer tous les enregistrements pour la recherche sémantique (RAG)")
 
@@ -1032,6 +1112,22 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # ── Commandes project — pas besoin de BDD ───────────────────────────────
+    if args.command == "project":
+        cmd_project(args)
+        return
+
+    # ── Résolution du projet actif ───────────────────────────────────────────
+    project_name = args.project or get_current_project()
+    if project_name:
+        try:
+            activate_project(project_name)
+        except FileNotFoundError as e:
+            print(f"Erreur : {e}")
+            sys.exit(1)
+
+    db.init_db()
 
     commands = {
         "analyze": cmd_analyze,
@@ -1052,6 +1148,7 @@ def main():
         "search": cmd_search,
         "index": cmd_index,
         "ask": cmd_ask,
+        "project": cmd_project,
     }
     commands[args.command](args)
 

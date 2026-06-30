@@ -3,7 +3,7 @@ import sqlite3
 import json
 import numpy as np
 from contextlib import contextmanager
-from audio_analyzer.config import DB_PATH
+from audio_analyzer import config
 
 
 def _regexp(pattern: str, text: str | None) -> bool:
@@ -77,7 +77,7 @@ def init_db():
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.create_function("REGEXP", 2, _regexp)
     try:

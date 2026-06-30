@@ -3,7 +3,7 @@ Embeddings sémantiques via Ollama (100% local, GPU) + stockage vectoriel Chroma
 Le modèle d'embedding tourne dans Ollama — aucun téléchargement HuggingFace requis.
 """
 from __future__ import annotations
-from audio_analyzer.config import EMBEDDING_MODEL, CHROMA_PATH, OLLAMA_HOST
+from audio_analyzer import config
 
 _collection = None
 
@@ -14,7 +14,7 @@ def _get_collection():
     global _collection
     if _collection is None:
         import chromadb
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
+        client = chromadb.PersistentClient(path=config.CHROMA_PATH)
         _collection = client.get_or_create_collection(
             name="segments",
             metadata={"hnsw:space": "cosine"},
@@ -25,11 +25,11 @@ def _get_collection():
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Génère les embeddings via Ollama (batch par _BATCH_SIZE)."""
     import ollama
-    client = ollama.Client(host=OLLAMA_HOST)
+    client = ollama.Client(host=config.OLLAMA_HOST)
     all_embeddings: list[list[float]] = []
     for i in range(0, len(texts), _BATCH_SIZE):
         batch = texts[i: i + _BATCH_SIZE]
-        response = client.embed(model=EMBEDDING_MODEL, input=batch)
+        response = client.embed(model=config.EMBEDDING_MODEL, input=batch)
         all_embeddings.extend(response["embeddings"])
     return all_embeddings
 
@@ -119,7 +119,7 @@ def collection_count() -> int:
 def reset_collection() -> None:
     """Supprime et recrée la collection (nécessaire après changement de modèle)."""
     import chromadb
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = chromadb.PersistentClient(path=config.CHROMA_PATH)
     client.delete_collection("segments")
     global _collection
     _collection = client.create_collection(
