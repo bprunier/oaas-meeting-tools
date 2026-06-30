@@ -18,5 +18,4 @@ test_files
 .projects
 projects/
 .current_project
-chroma_db/
 =0.5.0

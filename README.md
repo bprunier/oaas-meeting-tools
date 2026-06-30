@@ -1,246 +1,221 @@
 # OAAS Meeting Tools
 
-Audio Analysis tool for meeting transcription, speaker diarization, sentiment analysis, and summary generation - all running locally without requiring an account.
+Pipeline d'analyse de réunions audio — transcription, diarisation, sentiment, résumé et recherche sémantique, 100% local, aucun compte requis.
 
-## Features
+## Fonctionnalités
 
-- Audio transcription with word-level timestamps
-- Speaker diarization (identifying who spoke when)
-- Speaker identification using voice fingerprints
-- Sentiment analysis of each speaker's contributions
-- Automated meeting summary generation
-- Pattern detection: availability (busy), sleeping over, audio quality issues
-- Transcript search with keyword profiles and Ollama confirmation
-- Semantic search with French/multilingual embeddings (RAG) — ask questions in natural language
-- Export to ICS format for Google Calendar
-- Date detection from audio files and transcripts
+- Transcription avec timestamps mot par mot (Whisper large-v3)
+- Diarisation des locuteurs (qui parle quand)
+- Identification par empreinte vocale
+- Analyse de sentiment par locuteur
+- Résumé automatique de réunion
+- Détection de patterns : disponibilité, hébergement, qualité audio
+- Recherche par mots-clés avec validation Ollama
+- Recherche sémantique en langage naturel (RAG, 100% local via Ollama)
+- Export ICS (Google Calendar) et CSV
+- Gestion par projets — données isolées par projet
 
-## Requirements
+## Prérequis
 
-- Python 3.8+
-- Ollama (local LLM) for sentiment and summary analysis
-- Linux system with audio support
+- Python 3.10+
+- [Ollama](https://ollama.com) (LLM local)
+- Linux avec support audio (CUDA recommandé)
 
 ## Installation
 
-### Prerequisites
-
-1. Install Ollama: https://ollama.com
-2. Pull the required model:
-   ```bash
-   ollama pull llama3
-   ```
-
-### Install OAAS Meeting Tools
-
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd oaas-meeting-tools
-
-# Make the installation script executable
-chmod +x install.sh
-
-# Run the installation script
-./install.sh
 ```
 
-## Usage
+**Linux :**
+```bash
+chmod +x deploy.sh && ./deploy.sh
+```
 
-### Activate Virtual Environment
+**Windows** (PowerShell en tant qu'administrateur) :
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+.\deploy.ps1
+```
+
+Les scripts installent automatiquement ffmpeg, Ollama, les modèles (`llama3`, `nomic-embed-text`), le venv Python et créent le `.env`.
+
+## Démarrage rapide
 
 ```bash
-# Linux / macOS
 source .venv/bin/activate
 
-# Windows
-.venv\Scripts\Activate.ps1
+# Créer et activer un projet
+python main.py project create monProjet
+python main.py project use monProjet
+
+# Analyser un fichier audio
+python main.py analyze reunion.wav
+
+# Poser une question sur les réunions
+python main.py ask "de quoi avez-vous parlé ?"
 ```
 
-### Commands
+## Commandes
 
-#### Analysis
+### Projets
+
+Chaque projet est isolé dans `projects/<nom>/` avec sa propre BDD, index RAG, empreintes et exports.
 
 ```bash
-# Analyze a single audio file
-python main.py analyze <fichier.mp3> [--speakers N] [--threshold 0.75]
+python main.py project create <nom>       # créer un projet
+python main.py project list               # lister (● = actif)
+python main.py project use <nom>          # activer
+python main.py project unset              # désactiver
 
-# With pattern detection for a known speaker (fingerprint ID from `fingerprints` command)
-# Detects: busy/unavailable and sleeping-over for that speaker, audio quality for the whole recording
-python main.py analyze <fichier.mp3> --profile-fingerprint <FP_ID>
+# Forcer un projet pour une commande sans changer l'actif
+python main.py --project <nom> <commande>
+```
 
-# Scan an entire directory and analyze all audio files found
-# Supported formats: mp3, wav, m4a, ogg, flac, opus, aac
-# Already-analyzed files are automatically skipped
+```
+projects/<nom>/
+├── audio_analysis.db   # base SQLite
+├── chroma_db/          # index vectoriel RAG
+├── voices/             # fichiers audio pour les empreintes
+├── exports/            # CSV et ICS générés ici par défaut
+└── .env               # surcharges locales (Whisper, Ollama...)
+```
+
+### Analyse audio
+
+```bash
+# Analyser un fichier (formats : mp3, wav, m4a, ogg, flac, opus, aac)
+python main.py analyze <fichier> [--speakers N] [--threshold 0.75] [--vad-top-db 30]
+
+# Avec détection de profils pour un locuteur identifié (busy, sleeping, qualité)
+python main.py analyze <fichier> --profile-fingerprint <FP_ID>
+
+# Scanner un répertoire (fichiers déjà analysés ignorés automatiquement)
 python main.py scan-dir <répertoire> [--speakers N] [--threshold 0.75]
-python main.py scan-dir <répertoire> --recursive              # include subdirectories
+python main.py scan-dir <répertoire> --recursive
 python main.py scan-dir <répertoire> --profile-fingerprint <FP_ID>
 ```
 
-#### Speakers & Fingerprints
+### Empreintes vocales
 
 ```bash
-# Add a voice fingerprint for a known speaker
-python main.py add-fingerprint "Nom" <fichier.wav>
+python main.py add-fingerprint "Nom" <fichier.wav>    # enregistrer une empreinte
+python main.py fingerprints                            # lister
+python main.py remove-fingerprint <id>                 # supprimer
 
-# List registered voice fingerprints (shows sample count and custom threshold)
-python main.py fingerprints
-
-# Remove a fingerprint
-python main.py remove-fingerprint <id>
-
-# Improve detection for a speaker who speaks in short clips:
-
-# 1. Extract all their audio segments from existing recordings into a WAV file
-python main.py extract-speaker-audio <fp_id> [--output speaker.wav] [--min-duration 0.5]
-
-# 2. Enrich the fingerprint by averaging in the new clip (weighted by sample count)
-python main.py enrich-fingerprint <fp_id> <fichier.wav>
-
-# 3. Optionally set a lower detection threshold for this speaker only
-python main.py set-fingerprint-threshold <fp_id> 0.60
-python main.py set-fingerprint-threshold <fp_id>        # reset to global threshold
+# Améliorer la détection d'un locuteur à la voix variable :
+python main.py extract-speaker-audio <id> [--output speaker.wav] [--min-duration 0.5]
+python main.py enrich-fingerprint <id> <fichier.wav>
+python main.py set-fingerprint-threshold <id> 0.60    # seuil personnalisé
+python main.py set-fingerprint-threshold <id>         # reset au seuil global
 ```
 
-#### Viewing Results
+### Consultation
 
 ```bash
-# List all analyzed recordings
 python main.py list
-
-# Show details of a specific recording (transcript, speakers, detections, summary)
 python main.py show <id> [--no-transcript]
 ```
 
-#### Search
+### Recherche par mots-clés
 
 ```bash
-# Free-text search across all transcripts (with Ollama confirmation)
-python main.py search "occupé"
+python main.py search "texte à chercher"
+python main.py search "texte" --no-confirm            # sans validation Ollama (plus rapide)
+python main.py search "ça coup(e|ait)" --regex        # expression régulière Python
+python main.py search "texte" --speaker "Alice"       # filtrer par locuteur
+python main.py search "texte" --recording <id>        # limiter à un enregistrement
 
-# Predefined profiles: busy | sleeping | quality
-python main.py search --profile busy
-python main.py search --profile sleeping
-python main.py search --profile quality
-
-# Scope to a specific recording
-python main.py search --profile quality --recording <id>
-
-# Filter by speaker name
+# Profils prédéfinis
+python main.py search --profile busy                  # détecte les indisponibilités
+python main.py search --profile sleeping              # détecte les hébergements
+python main.py search --profile quality               # détecte les problèmes audio
 python main.py search --profile busy --speaker "Alice"
-
-# Skip Ollama confirmation (keyword-only, instant)
-python main.py search "ça coupe" --no-confirm
-
-# Regex search (Python re syntax, case-insensitive)
-python main.py search "ça coup(e|ait)" --regex
-python main.py search "\bt'entend" --regex
-python main.py search --profile quality --regex
+python main.py search --profile quality --recording <id>
 ```
 
-Profiles scan for these patterns:
-| Profile | Detects |
-|---------|---------|
-| `busy` | "occupé", "pas disponible", "j'ai pas le temps", "je peux pas"… |
+| Profil | Détecte |
+|--------|---------|
+| `busy` | "occupé", "pas disponible", "j'ai pas le temps"… |
 | `sleeping` | "dormir chez", "passer la nuit", "je reste chez"… |
-| `quality` | "ça coupe", "tu m'entends", "j'entends pas", "connexion"… |
+| `quality` | "ça coupe", "tu m'entends", "j'entends pas"… |
 
-#### Semantic Search (RAG)
+### Recherche sémantique (RAG)
 
 ```bash
-# Index all recordings into the local vector database (ChromaDB)
-# Run this once after the first install, and again after batch imports
+# Indexer les enregistrements (une fois après install, puis après import en masse)
 python main.py index
 
-# Ask a question in natural language (French or English)
-python main.py ask "de quoi avez-vous parlé la semaine dernière ?"
-python main.py ask "est-ce que quelqu'un a mentionné un problème technique ?"
-
-# Limit to a specific recording
+# Poser une question en langage naturel
+python main.py ask "de quoi avez-vous parlé ?"
+python main.py ask "y a-t-il eu des problèmes techniques ?" --top-k 15
 python main.py ask "quel est le sujet principal ?" --recording <id>
-
-# Increase the number of context segments retrieved (default: 8)
-python main.py ask "y a-t-il eu des décisions importantes ?" --top-k 15
 ```
 
-New recordings are indexed automatically after each `analyze` or `scan-dir` run.
+Les nouveaux enregistrements sont indexés automatiquement à la fin de chaque `analyze`.
 
-#### Export & Maintenance
+### Export & maintenance
 
 ```bash
-# Export all recordings to CSV (id, date, recognized speakers, transcription, summary)
-python main.py export-csv
-python main.py export-csv --output rapport.csv
+python main.py export-csv [--output rapport.csv]
+python main.py export-ics [<id> ...] [--output calendrier.ics]
 
-# Export recordings to ICS format for Google Calendar
-python main.py export-ics [<id> ...] [--output fichier.ics]
-
-# Backfill missing dates on existing recordings
-python main.py backfill-dates
-
-# Run a profile detection on all existing recordings (skips already-processed ones)
-python main.py backfill-detections --profile quality
-python main.py backfill-detections --profile busy
-python main.py backfill-detections --profile sleeping
-
-# Scope busy/sleeping detection to a specific identified speaker
+python main.py backfill-dates                                    # remplir les dates manquantes
+python main.py backfill-detections --profile quality             # (ré)analyser tous les enreg.
 python main.py backfill-detections --profile busy --fingerprint <FP_ID>
-python main.py backfill-detections --profile sleeping --fingerprint <FP_ID>
 
-# Delete ALL recordings from the database (voice fingerprints are kept)
-python main.py clear-recordings
-python main.py clear-recordings --yes   # skip confirmation prompt
+python main.py clear-recordings [--yes]                          # supprimer tous les enreg. (empreintes conservées)
 ```
 
-> Ollama must be running before any analysis: `ollama serve`
+## Configuration
 
-### Configuration
+`.env` global — s'applique à tous les projets :
 
-Create a `.env` file based on `.env.example` to customize settings:
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `WHISPER_MODEL_SIZE` | `large-v3` | Taille du modèle Whisper (`tiny` → `large-v3`) |
+| `AUDIO_LANGUAGE` | `fr` | Langue forcée (vide = auto-détection) |
+| `MIN_SPEAKING_TIME` | `5` | Secondes min. pour figurer dans la synthèse |
+| `VAD_TOP_DB` | `35` | Seuil VAD — baisser pour capter les voix faibles |
+| `OLLAMA_HOST` | `http://localhost:11434` | URL du serveur Ollama |
+| `OLLAMA_MODEL` | `llama3` | Modèle LLM (sentiment, résumé, RAG) |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Modèle embeddings RAG via Ollama |
 
-```bash
-cp .env.example .env
-```
+`DB_PATH` et `CHROMA_PATH` sont gérés automatiquement par le système de projets.
 
-## Project Structure
+Chaque projet peut surcharger ces variables dans `projects/<nom>/.env`.
+
+## Structure du projet
 
 ```
 oaas-meeting-tools/
-├── main.py                 # Main entry point
-├── requirements.txt        # Python dependencies
-├── install.sh              # Installation script for Linux
-├── .env.example            # Environment configuration example
-├── CLAUDE.md               # Documentation for Claude AI
+├── main.py                    # Point d'entrée
+├── requirements.txt
+├── deploy.sh                  # Script de déploiement Linux
+├── deploy.ps1                 # Script de déploiement Windows
+├── .env.example               # Template de configuration
 ├── audio_analyzer/
-│   ├── __init__.py
-│   ├── config.py           # Configuration management
-│   ├── database.py         # SQLite database operations
-│   ├── transcriber.py      # Audio transcription and diarization
-│   ├── analyzer.py         # Sentiment analysis and summary generation
-│   ├── fingerprint.py      # Voice fingerprint management
-│   ├── searcher.py         # Transcript search with keyword profiles and Ollama confirmation
-│   ├── embedder.py         # Sentence-transformers embeddings + ChromaDB vector store (RAG)
-│   ├── date_detector.py    # Date detection from audio
-│   └── ics_exporter.py     # ICS export functionality
+│   ├── config.py              # Variables de configuration
+│   ├── database.py            # Opérations SQLite
+│   ├── transcriber.py         # Transcription + diarisation
+│   ├── analyzer.py            # Sentiment + résumé (Ollama)
+│   ├── fingerprint.py         # Empreintes vocales
+│   ├── voice_encoder.py       # Singleton resemblyzer (forcé CPU)
+│   ├── embedder.py            # Embeddings Ollama + ChromaDB (RAG)
+│   ├── project.py             # Gestion des projets
+│   ├── searcher.py            # Recherche keyword + profils
+│   ├── date_detector.py       # Détection de date
+│   └── ics_exporter.py        # Export ICS
+└── projects/                  # Données par projet (gitignore)
+    └── <nom>/
+        ├── audio_analysis.db
+        ├── chroma_db/
+        ├── voices/
+        ├── exports/
+        └── .env
 ```
 
-## Development
+## Licence
 
-### Setting up Development Environment
-
-1. Create virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Run tests or development commands as needed.
-
-## License
-
-This project is licensed under the MIT License.
+MIT

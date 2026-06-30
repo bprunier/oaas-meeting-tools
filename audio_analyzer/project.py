@@ -24,13 +24,17 @@ def create_project(name: str) -> Path:
     env_path = p / ".env"
     if not env_path.exists():
         env_path.write_text(
-            f"# Projet : {name}\n"
-            "# Surcharge les paramètres du .env global (Ollama, Whisper, etc.)\n\n"
+            f"# {'─' * 75}\n"
+            f"# CONFIG PROJET : {name}\n"
+            "# Surcharge le .env global pour ce projet uniquement.\n"
+            "# DB_PATH et CHROMA_PATH sont gérés automatiquement — ne pas les définir ici.\n"
+            f"# {'─' * 75}\n\n"
             "# WHISPER_MODEL_SIZE=large-v3\n"
             "# AUDIO_LANGUAGE=fr\n"
             "# OLLAMA_MODEL=llama3\n"
             "# EMBEDDING_MODEL=nomic-embed-text\n"
-            "# MIN_SPEAKING_TIME=5\n",
+            "# MIN_SPEAKING_TIME=5\n"
+            "# VAD_TOP_DB=35\n",
             encoding="utf-8",
         )
     return p
