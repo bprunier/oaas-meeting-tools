@@ -146,6 +146,7 @@ def transcribe(audio_path: str,
         "condition_on_previous_text": False,
         "no_speech_threshold": 0.6,
         "temperature": 0.0,
+        "initial_prompt": "Réunion d'entreprise en français. Transcription fidèle avec ponctuation.",
     }
     if AUDIO_LANGUAGE:
         kwargs["language"] = AUDIO_LANGUAGE
