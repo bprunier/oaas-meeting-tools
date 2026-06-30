@@ -14,6 +14,9 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 MIN_SPEAKING_TIME = float(os.getenv("MIN_SPEAKING_TIME", "5"))
 VAD_TOP_DB = int(os.getenv("VAD_TOP_DB", "35"))
 
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-mpnet-base-v2")
+CHROMA_PATH = os.getenv("CHROMA_PATH", "chroma_db")
+
 
 def validate():
     pass  # Tout est local, aucune clé requise

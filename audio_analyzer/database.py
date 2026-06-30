@@ -1,8 +1,15 @@
+import re
 import sqlite3
 import json
 import numpy as np
 from contextlib import contextmanager
 from audio_analyzer.config import DB_PATH
+
+
+def _regexp(pattern: str, text: str | None) -> bool:
+    if text is None:
+        return False
+    return bool(re.search(pattern, text, re.IGNORECASE | re.DOTALL))
 
 
 def init_db():
@@ -72,6 +79,7 @@ def init_db():
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.create_function("REGEXP", 2, _regexp)
     try:
         yield conn
         conn.commit()
@@ -365,14 +373,68 @@ def delete_profile_detections(recording_id: int, profile: str,
             )
 
 
-def search_segments(keywords: list[str], speaker_filter: str | None = None,
-                    recording_id: int | None = None) -> list[dict]:
-    """Cherche dans les segments par mots-clés (OR). Retourne les segments qui matchent."""
+def search_transcripts(keywords: list[str], regex: bool = False,
+                       recording_id: int | None = None,
+                       speaker_filter: str | None = None) -> list[dict]:
+    """
+    Cherche dans transcript_full (enregistrement entier).
+    Regex en mode DOTALL+IGNORECASE → match cross-segments.
+    Retourne [{recording_id, filename, recording_date, transcript_full}]
+    """
     if not keywords:
         return []
 
-    like_clauses = " OR ".join("LOWER(seg.text) LIKE ?" for _ in keywords)
-    params: list = [f"%{kw.lower()}%" for kw in keywords]
+    if regex:
+        text_clauses = " OR ".join("r.transcript_full REGEXP ?" for _ in keywords)
+        params: list = list(keywords)
+    else:
+        text_clauses = " OR ".join("LOWER(r.transcript_full) LIKE ?" for _ in keywords)
+        params = [f"%{kw.lower()}%" for kw in keywords]
+
+    rec_clause = ""
+    if recording_id is not None:
+        rec_clause = "AND r.id = ?"
+        params.append(recording_id)
+
+    query = f"""
+        SELECT r.id as recording_id, r.filename, r.recording_date, r.transcript_full
+        FROM recordings r
+        WHERE r.transcript_full IS NOT NULL
+          AND ({text_clauses})
+          {rec_clause}
+        ORDER BY r.recording_date DESC, r.id DESC
+    """
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+
+    results = []
+    for row in rows:
+        transcript = row["transcript_full"] or ""
+        if speaker_filter:
+            if speaker_filter.lower() not in transcript.lower():
+                continue
+        results.append({
+            "recording_id": row["recording_id"],
+            "filename": row["filename"],
+            "recording_date": row["recording_date"],
+            "transcript_full": transcript,
+        })
+    return results
+
+
+def search_segments(keywords: list[str], speaker_filter: str | None = None,
+                    recording_id: int | None = None,
+                    regex: bool = False) -> list[dict]:
+    """Cherche dans les segments par mots-clés (OR) ou expressions régulières."""
+    if not keywords:
+        return []
+
+    if regex:
+        like_clauses = " OR ".join("seg.text REGEXP ?" for _ in keywords)
+        params: list = list(keywords)
+    else:
+        like_clauses = " OR ".join("LOWER(seg.text) LIKE ?" for _ in keywords)
+        params = [f"%{kw.lower()}%" for kw in keywords]
 
     speaker_clause = ""
     if speaker_filter:

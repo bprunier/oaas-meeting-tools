@@ -198,6 +198,16 @@ def _analyze_file(audio_path: str, num_speakers: int | None, threshold: float,
     print_divider()
     print(f"\nSauvegardé en base → ID {rec_id}  (python main.py show {rec_id})\n")
 
+    print("  Indexation sémantique (RAG)...")
+    try:
+        from audio_analyzer.embedder import index_segments as _idx
+        indexed_data = db.get_recording(rec_id)
+        if indexed_data:
+            n = _idx(indexed_data["segments"], rec_id, audio_path, recording_date)
+            print(f"  {n} segments indexés dans ChromaDB.")
+    except Exception as e:
+        print(f"  [Avertissement] Indexation RAG ignorée : {e}")
+
     return rec_id
 
 
@@ -651,6 +661,7 @@ def cmd_search(args):
     query = getattr(args, "query", None)
     speaker = getattr(args, "speaker", None)
     no_confirm = getattr(args, "no_confirm", False)
+    use_regex = getattr(args, "regex", False)
 
     if not profile and not query:
         print("Erreur : fournir un texte à chercher ou --profile.")
@@ -658,7 +669,8 @@ def cmd_search(args):
         sys.exit(1)
 
     label = PROFILES[profile]["label"] if profile else f'"{query}"'
-    print_header(f"Recherche : {label}")
+    mode = " [regex]" if use_regex else ""
+    print_header(f"Recherche : {label}{mode}")
     if speaker:
         print(f"  Filtre locuteur : {speaker}\n")
 
@@ -671,6 +683,7 @@ def cmd_search(args):
             speaker_filter=speaker,
             confirm=not no_confirm,
             recording_id=recording_id,
+            regex=use_regex,
         )
     except ValueError as e:
         print(f"Erreur : {e}")
@@ -693,9 +706,8 @@ def cmd_search(args):
         print_divider()
         print(f"[#{rec['id']}] {Path(rec['filename']).name}  —  {date_str}\n")
 
-        for seg in matches:
-            name = seg.get("identified_name") or seg["speaker_label"]
-            print(f"  [{fmt_time(seg['start_time'])}] {name}: {seg['text']}")
+        for line in matches:
+            print(f"  {line}")
 
         if ollama is not None:
             print()
@@ -718,6 +730,110 @@ def cmd_search(args):
     if not no_confirm:
         msg += f" — {confirmed_count} confirmé(s) par Ollama"
     print(msg)
+    print()
+
+
+# ── Commande : index ─────────────────────────────────────────────────────────
+
+def cmd_index(args):
+    """Indexe tous les enregistrements existants dans ChromaDB pour la recherche sémantique."""
+    from audio_analyzer.embedder import index_segments, collection_count
+
+    recordings = db.list_recordings()
+    if not recordings:
+        print("Aucun enregistrement à indexer.")
+        return
+
+    already = collection_count()
+    print_header(f"Indexation RAG — {len(recordings)} enregistrement(s) ({already} segments déjà indexés)")
+
+    total = 0
+    errors = []
+    for i, rec in enumerate(recordings, 1):
+        data = db.get_recording(rec["id"])
+        if not data:
+            continue
+        name = Path(rec["filename"]).name
+        print(f"  [{i:>3}/{len(recordings)}] #{rec['id']} {name:<36}", end=" ", flush=True)
+        try:
+            n = index_segments(
+                data["segments"],
+                recording_id=rec["id"],
+                filename=rec["filename"],
+                recording_date=rec.get("recording_date"),
+            )
+            total += n
+            print(f"{n} segments")
+        except Exception as e:
+            print(f"ERREUR : {e}")
+            errors.append((rec["id"], str(e)))
+
+    print_divider()
+    print(f"{total} segment(s) indexé(s) dans ChromaDB.")
+    if errors:
+        for rid, err in errors:
+            print(f"  #{rid} : {err}")
+    print()
+
+
+# ── Commande : ask ────────────────────────────────────────────────────────────
+
+def cmd_ask(args):
+    """Recherche sémantique + réponse RAG via Ollama."""
+    from audio_analyzer.embedder import search_semantic, collection_count
+    import ollama as ollama_client
+
+    question = args.question
+    n = args.top_k
+    recording_id = getattr(args, "recording", None)
+
+    total_indexed = collection_count()
+    if total_indexed == 0:
+        print("Aucun segment indexé. Lancez d'abord : python main.py index")
+        return
+
+    print_header(f"RAG : {question}")
+    print(f"  {total_indexed} segments indexés | top-{n} recherchés\n")
+
+    segments = search_semantic(question, n_results=n, recording_id=recording_id)
+    if not segments:
+        print("Aucun segment pertinent trouvé.")
+        return
+
+    print_divider()
+    print("SEGMENTS RETROUVÉS\n")
+    context_lines = []
+    for s in segments:
+        name = s["identified_name"] or s["speaker_label"]
+        time = fmt_time(s["start_time"])
+        date = s["recording_date"] or "?"
+        score_bar = "█" * int(s["score"] * 10)
+        print(f"  [{s['score']:.2f} {score_bar:<10}] [{date} {time}] {name}")
+        print(f"    {s['text']}\n")
+        context_lines.append(f"[{date} / {time}] {name}: {s['text']}")
+
+    context = "\n".join(context_lines)
+
+    prompt = (
+        "Tu es un assistant qui analyse des transcriptions de réunions. "
+        "Réponds à la question en français en t'appuyant uniquement sur les extraits fournis. "
+        "Si la réponse n'est pas dans les extraits, dis-le clairement.\n\n"
+        f"Extraits pertinents :\n{context}\n\n"
+        f"Question : {question}\n\nRéponse :"
+    )
+
+    print_divider()
+    print(f"RÉPONSE  [Ollama: {config.OLLAMA_MODEL}]\n")
+    try:
+        client = ollama_client.Client(host=config.OLLAMA_HOST)
+        response = client.chat(
+            model=config.OLLAMA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        print(response["message"]["content"].strip())
+    except Exception as e:
+        print(f"Erreur Ollama : {e}")
+        print("\n(Contexte disponible ci-dessus — lancez Ollama pour obtenir une réponse synthétisée.)")
     print()
 
 
@@ -884,6 +1000,10 @@ def main():
         "--recording", "-r", type=int, default=None, metavar="ID",
         help="Limiter la recherche à un enregistrement précis (ID)"
     )
+    p_search.add_argument(
+        "--regex", "-re", action="store_true",
+        help="Interpréter la query comme une expression régulière Python (re.IGNORECASE)"
+    )
 
     # export-ics
     p_ics = sub.add_parser("export-ics", help="Exporter les réunions au format ICS (Google Calendar)")
@@ -894,6 +1014,21 @@ def main():
     p_ics.add_argument(
         "--output", "-o", default="recordings.ics",
         help="Fichier de sortie (défaut: recordings.ics)"
+    )
+
+    # index
+    sub.add_parser("index", help="Indexer tous les enregistrements pour la recherche sémantique (RAG)")
+
+    # ask
+    p_ask = sub.add_parser("ask", help="Poser une question sur les réunions (RAG)")
+    p_ask.add_argument("question", help="Question en langage naturel")
+    p_ask.add_argument(
+        "--top-k", type=int, default=8, metavar="N",
+        help="Nombre de segments à récupérer (défaut: 8)"
+    )
+    p_ask.add_argument(
+        "--recording", "-r", type=int, default=None, metavar="ID",
+        help="Limiter la recherche à un enregistrement précis (ID)"
     )
 
     args = parser.parse_args()
@@ -915,6 +1050,8 @@ def main():
         "backfill-dates": cmd_backfill_dates,
         "backfill-detections": cmd_backfill_detections,
         "search": cmd_search,
+        "index": cmd_index,
+        "ask": cmd_ask,
     }
     commands[args.command](args)
 

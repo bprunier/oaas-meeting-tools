@@ -11,6 +11,7 @@ Audio Analysis tool for meeting transcription, speaker diarization, sentiment an
 - Automated meeting summary generation
 - Pattern detection: availability (busy), sleeping over, audio quality issues
 - Transcript search with keyword profiles and Ollama confirmation
+- Semantic search with French/multilingual embeddings (RAG) — ask questions in natural language
 - Export to ICS format for Google Calendar
 - Date detection from audio files and transcripts
 
@@ -130,6 +131,11 @@ python main.py search --profile busy --speaker "Alice"
 
 # Skip Ollama confirmation (keyword-only, instant)
 python main.py search "ça coupe" --no-confirm
+
+# Regex search (Python re syntax, case-insensitive)
+python main.py search "ça coup(e|ait)" --regex
+python main.py search "\bt'entend" --regex
+python main.py search --profile quality --regex
 ```
 
 Profiles scan for these patterns:
@@ -138,6 +144,26 @@ Profiles scan for these patterns:
 | `busy` | "occupé", "pas disponible", "j'ai pas le temps", "je peux pas"… |
 | `sleeping` | "dormir chez", "passer la nuit", "je reste chez"… |
 | `quality` | "ça coupe", "tu m'entends", "j'entends pas", "connexion"… |
+
+#### Semantic Search (RAG)
+
+```bash
+# Index all recordings into the local vector database (ChromaDB)
+# Run this once after the first install, and again after batch imports
+python main.py index
+
+# Ask a question in natural language (French or English)
+python main.py ask "de quoi avez-vous parlé la semaine dernière ?"
+python main.py ask "est-ce que quelqu'un a mentionné un problème technique ?"
+
+# Limit to a specific recording
+python main.py ask "quel est le sujet principal ?" --recording <id>
+
+# Increase the number of context segments retrieved (default: 8)
+python main.py ask "y a-t-il eu des décisions importantes ?" --top-k 15
+```
+
+New recordings are indexed automatically after each `analyze` or `scan-dir` run.
 
 #### Export & Maintenance
 
@@ -193,6 +219,7 @@ oaas-meeting-tools/
 │   ├── analyzer.py         # Sentiment analysis and summary generation
 │   ├── fingerprint.py      # Voice fingerprint management
 │   ├── searcher.py         # Transcript search with keyword profiles and Ollama confirmation
+│   ├── embedder.py         # Sentence-transformers embeddings + ChromaDB vector store (RAG)
 │   ├── date_detector.py    # Date detection from audio
 │   └── ics_exporter.py     # ICS export functionality
 ```

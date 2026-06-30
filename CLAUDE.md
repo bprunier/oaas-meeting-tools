@@ -29,6 +29,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Exporter les réunions en fichier ICS (Google Calendar)
 .venv\Scripts\python main.py export-ics [<id> ...] [--output fichier.ics]
+
+# Indexer tous les enregistrements dans ChromaDB (RAG — à lancer une fois après install)
+python main.py index
+
+# Poser une question en langage naturel sur les réunions (RAG)
+python main.py ask "de quoi avez-vous parlé ?" [--top-k 8] [--recording <id>]
 ```
 
 Ollama doit tourner localement avant toute analyse : `ollama serve` + le modèle configuré dans `.env` doit être pulled (`ollama pull llama3`).
@@ -65,6 +71,13 @@ Pipeline en 4 étapes orchestré dans `main.py:cmd_analyze` :
    - Génère un fichier `.ics` (RFC 5545) importable dans Google Calendar
    - Objet : ambiance globale + noms des participants ; Description : résumé Ollama
 
+7. **Indexation sémantique RAG** (`audio_analyzer/embedder.py`)
+   - Appelée automatiquement à la fin de chaque analyse
+   - `sentence-transformers` (`paraphrase-multilingual-mpnet-base-v2`, 768-dim, GPU) encode chaque segment
+   - ChromaDB (mode `PersistentClient`, répertoire local `chroma_db/`) stocke les embeddings + métadonnées
+   - `python main.py index` indexe en masse les enregistrements existants
+   - `python main.py ask "question"` : embed la question → top-K segments → prompt RAG → Ollama
+
 ### Persistance (SQLite)
 
 Schéma dans `database.py:init_db()` — 4 tables :
@@ -85,6 +98,8 @@ Toute la config passe par `.env` (copier `.env.example`) :
 | `AUDIO_LANGUAGE` | *(vide)* | Langue forcée, sinon auto-détection |
 | `DB_PATH` | `audio_analysis.db` | Chemin SQLite |
 | `MIN_SPEAKING_TIME` | `5` | Temps de parole minimum (secondes) pour figurer dans la synthèse |
+| `EMBEDDING_MODEL` | `paraphrase-multilingual-mpnet-base-v2` | Modèle sentence-transformers pour le RAG |
+| `CHROMA_PATH` | `chroma_db` | Répertoire de la base vectorielle ChromaDB |
 
 ### Points d'attention
 

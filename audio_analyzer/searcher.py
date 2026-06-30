@@ -64,13 +64,36 @@ PROFILES: dict[str, dict] = {
 }
 
 
+def _extract_context(transcript: str, keywords: list[str], regex: bool,
+                     context_lines: int = 2) -> list[str]:
+    """Retourne les lignes du transcript qui matchent + N lignes de contexte."""
+    lines = [l.strip() for l in transcript.split("\n") if l.strip()]
+
+    matched_indices: set[int] = set()
+    if regex:
+        for kw in keywords:
+            pos = 0
+            for i, line in enumerate(lines):
+                line_end = pos + len(line)
+                for m in re.finditer(kw, transcript, re.IGNORECASE | re.DOTALL):
+                    if pos <= m.end() and line_end >= m.start():
+                        for c in range(max(0, i - context_lines),
+                                       min(len(lines), i + context_lines + 1)):
+                            matched_indices.add(c)
+                pos = line_end + 1
+    else:
+        for i, line in enumerate(lines):
+            if any(kw.lower() in line.lower() for kw in keywords):
+                for c in range(max(0, i - context_lines),
+                               min(len(lines), i + context_lines + 1)):
+                    matched_indices.add(c)
+
+    return [lines[i] for i in sorted(matched_indices)]
+
+
 def _build_ollama_prompt(filename: str, date: str | None,
-                         segments: list[dict], pattern_description: str) -> str:
-    excerpt = "\n".join(
-        f"  [{_fmt(seg['start_time'])}] "
-        f"{seg.get('identified_name') or seg['speaker_label']}: {seg['text']}"
-        for seg in segments
-    )
+                         excerpt_lines: list[str], pattern_description: str) -> str:
+    excerpt = "\n".join(f"  {line}" for line in excerpt_lines)
     date_str = date or "date inconnue"
     return f"""Tu es un assistant qui analyse des transcripts de réunions audio.
 
@@ -130,6 +153,7 @@ def search(
     speaker_filter: str | None = None,
     confirm: bool = True,
     recording_id: int | None = None,
+    regex: bool = False,
 ) -> list[dict]:
     """
     Retourne une liste de résultats groupés par enregistrement :
@@ -149,31 +173,35 @@ def search(
         description = PROFILES[profile]["ollama_description"]
     elif query:
         keywords = [query]
-        description = f'Quelqu\'un dit quelque chose contenant "{query}".'
+        description = (
+            f'Quelqu\'un dit quelque chose correspondant à l\'expression "{query}".'
+            if regex else
+            f'Quelqu\'un dit quelque chose contenant "{query}".'
+        )
     else:
         raise ValueError("Fournir --query ou --profile.")
 
-    raw_matches = db.search_segments(keywords, speaker_filter, recording_id)
-    if not raw_matches:
+    raw = db.search_transcripts(keywords, regex=regex,
+                                recording_id=recording_id,
+                                speaker_filter=speaker_filter)
+    if not raw:
         return []
 
-    # Grouper par enregistrement
-    by_rec: dict[int, dict] = {}
-    for seg in raw_matches:
-        rid = seg["recording_id"]
-        if rid not in by_rec:
-            by_rec[rid] = {
-                "recording": {
-                    "id": rid,
-                    "filename": seg["filename"],
-                    "recording_date": seg["recording_date"],
-                },
-                "matches": [],
-                "ollama": None,
-            }
-        by_rec[rid]["matches"].append(seg)
-
-    results = list(by_rec.values())
+    results = []
+    for row in raw:
+        excerpt_lines = _extract_context(
+            row["transcript_full"], keywords, regex, context_lines=2
+        )
+        entry = {
+            "recording": {
+                "id": row["recording_id"],
+                "filename": row["filename"],
+                "recording_date": row["recording_date"],
+            },
+            "matches": excerpt_lines,
+            "ollama": None,
+        }
+        results.append(entry)
 
     if confirm:
         for entry in results:
@@ -181,7 +209,7 @@ def search(
             entry["ollama"] = _confirm(
                 filename=Path(rec["filename"]).name,
                 date=rec["recording_date"],
-                segments=entry["matches"],
+                excerpt_lines=entry["matches"],
                 description=description,
             )
 
@@ -224,9 +252,9 @@ def _parse_json_robust(raw: str) -> dict:
     raise json.JSONDecodeError("Impossible d'extraire le JSON", raw, 0)
 
 
-def _confirm(filename: str, date: str | None, segments: list[dict],
+def _confirm(filename: str, date: str | None, excerpt_lines: list[str],
              description: str) -> dict:
-    prompt = _build_ollama_prompt(filename, date, segments, description)
+    prompt = _build_ollama_prompt(filename, date, excerpt_lines, description)
     raw = _chat(prompt)
     try:
         return _parse_json_robust(raw)
