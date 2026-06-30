@@ -29,7 +29,14 @@
       "Bash(.venv/bin/pip install *)",
       "Bash(readelf -d /var/home/ben/Codekiff/oaas-meeting-tools/.venv/lib/python3.14/site-packages/nvidia/cublas/lib/libcublas.so.12)",
       "Bash(python *)",
-      "Bash(.venv/bin/python *)"
+      "Bash(.venv/bin/python *)",
+      "Bash(git -C /var/home/ben/Codekiff/oaas-meeting-tools status)",
+      "Bash(git -C /var/home/ben/Codekiff/oaas-meeting-tools diff)",
+      "Bash(git *)",
+      "Skill(run)",
+      "Skill(claude-api)",
+      "Bash(ollama pull *)",
+      "Bash(chmod +x /var/home/ben/Codekiff/oaas-meeting-tools/deploy.sh)"
     ]
   }
 }
