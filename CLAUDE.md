@@ -73,10 +73,11 @@ Pipeline en 4 étapes orchestré dans `main.py:cmd_analyze` :
 
 7. **Indexation sémantique RAG** (`audio_analyzer/embedder.py`)
    - Appelée automatiquement à la fin de chaque analyse
-   - `sentence-transformers` (`paraphrase-multilingual-mpnet-base-v2`, 768-dim, GPU) encode chaque segment
+   - Ollama (`EMBEDDING_MODEL`, défaut `nomic-embed-text`) génère les embeddings via GPU local — 100% offline
    - ChromaDB (mode `PersistentClient`, répertoire local `chroma_db/`) stocke les embeddings + métadonnées
    - `python main.py index` indexe en masse les enregistrements existants
    - `python main.py ask "question"` : embed la question → top-K segments → prompt RAG → Ollama
+   - Changer de modèle d'embedding nécessite de ré-indexer (`python main.py index` après avoir vidé `chroma_db/`)
 
 ### Persistance (SQLite)
 
@@ -98,7 +99,7 @@ Toute la config passe par `.env` (copier `.env.example`) :
 | `AUDIO_LANGUAGE` | *(vide)* | Langue forcée, sinon auto-détection |
 | `DB_PATH` | `audio_analysis.db` | Chemin SQLite |
 | `MIN_SPEAKING_TIME` | `5` | Temps de parole minimum (secondes) pour figurer dans la synthèse |
-| `EMBEDDING_MODEL` | `paraphrase-multilingual-mpnet-base-v2` | Modèle sentence-transformers pour le RAG |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Modèle Ollama pour les embeddings RAG (ollama pull nomic-embed-text) |
 | `CHROMA_PATH` | `chroma_db` | Répertoire de la base vectorielle ChromaDB |
 
 ### Points d'attention

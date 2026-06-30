@@ -1,23 +1,13 @@
 """
-Embeddings sémantiques (sentence-transformers) + stockage vectoriel ChromaDB local.
-Permet la recherche sémantique sur les segments de transcription.
+Embeddings sémantiques via Ollama (100% local, GPU) + stockage vectoriel ChromaDB local.
+Le modèle d'embedding tourne dans Ollama — aucun téléchargement HuggingFace requis.
 """
 from __future__ import annotations
-import torch
-from audio_analyzer.config import EMBEDDING_MODEL, CHROMA_PATH
+from audio_analyzer.config import EMBEDDING_MODEL, CHROMA_PATH, OLLAMA_HOST
 
-_model = None
 _collection = None
 
-
-def _get_model():
-    global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"  Chargement embeddings [{device}]: {EMBEDDING_MODEL}")
-        _model = SentenceTransformer(EMBEDDING_MODEL, device=device)
-    return _model
+_BATCH_SIZE = 32
 
 
 def _get_collection():
@@ -33,9 +23,15 @@ def _get_collection():
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    model = _get_model()
-    vectors = model.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
-    return vectors.tolist()
+    """Génère les embeddings via Ollama (batch par _BATCH_SIZE)."""
+    import ollama
+    client = ollama.Client(host=OLLAMA_HOST)
+    all_embeddings: list[list[float]] = []
+    for i in range(0, len(texts), _BATCH_SIZE):
+        batch = texts[i: i + _BATCH_SIZE]
+        response = client.embed(model=EMBEDDING_MODEL, input=batch)
+        all_embeddings.extend(response["embeddings"])
+    return all_embeddings
 
 
 def index_segments(segments: list[dict], recording_id: int,
@@ -118,3 +114,15 @@ def search_semantic(query: str, n_results: int = 10,
 
 def collection_count() -> int:
     return _get_collection().count()
+
+
+def reset_collection() -> None:
+    """Supprime et recrée la collection (nécessaire après changement de modèle)."""
+    import chromadb
+    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client.delete_collection("segments")
+    global _collection
+    _collection = client.create_collection(
+        name="segments",
+        metadata={"hnsw:space": "cosine"},
+    )
